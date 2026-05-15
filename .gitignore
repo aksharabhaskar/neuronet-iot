@@ -1,0 +1,33 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+
+# Generated data (do not commit runtime logs or trained model binaries)
+data/logs.csv
+data/model.pkl
+data/model_metrics.json
+data/config.json
+
+# Environment variables
+.env
+.env.local
+
+# Node.js
+dashboard-react/node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.iml
