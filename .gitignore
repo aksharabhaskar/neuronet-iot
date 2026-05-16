@@ -10,11 +10,6 @@ dist/
 build/
 .pytest_cache/
 
-# Generated data (do not commit runtime logs or trained model binaries)
-data/logs.csv
-data/model.pkl
-data/model_metrics.json
-data/config.json
 
 # Environment variables
 .env
