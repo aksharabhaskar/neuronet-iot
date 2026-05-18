@@ -81,7 +81,7 @@ function ConfusionMatrix({ matrix }: { matrix: number[][] }) {
             return (
               <div key={`${ri}-${ci}`} style={{
                 background: bg,
-                border: `1px solid ${isDiag ? 'rgba(245,166,35,0.2)' : 'rgba(239,68,68,0.15)'}`,
+                border: `1px solid ${isDiag ? 'rgba(0,201,167,0.2)' : 'rgba(239,68,68,0.15)'}`,
                 borderRadius: 8, padding: '14px 8px', textAlign: 'center',
               }}>
                 <div className="mono" style={{ fontSize: 20, fontWeight: 700, color: textColor }}>{val.toLocaleString()}</div>
@@ -400,7 +400,7 @@ export default function MLMetricsView() {
                   <td style={{ padding: '11px 12px', color: C.text1, fontWeight: 600, borderBottom: `1px solid ${C.borderSub}` }}>{cls}</td>
                   <td className="mono" style={{ padding: '11px 12px', textAlign: 'right', color: C.text2, borderBottom: `1px solid ${C.borderSub}` }}>{(row.precision * 100).toFixed(2)}%</td>
                   <td className="mono" style={{ padding: '11px 12px', textAlign: 'right', color: C.text2, borderBottom: `1px solid ${C.borderSub}` }}>{(row.recall * 100).toFixed(2)}%</td>
-                  <td className="mono" style={{ padding: '11px 12px', textAlign: 'right', color: C.amber, fontWeight: 600, borderBottom: `1px solid ${C.borderSub}` }}>{(row['f1-score'] * 100).toFixed(2)}%</td>
+                  <td className="mono" style={{ padding: '11px 12px', textAlign: 'right', color: C.teal, fontWeight: 600, borderBottom: `1px solid ${C.borderSub}` }}>{(row['f1-score'] * 100).toFixed(2)}%</td>
                   <td className="mono" style={{ padding: '11px 12px', textAlign: 'right', color: C.text3, borderBottom: `1px solid ${C.borderSub}` }}>{row.support.toLocaleString()}</td>
                 </tr>
               );

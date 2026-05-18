@@ -151,9 +151,11 @@ function IRTimeline({ allData }: { allData: Record<string, any[]> }) {
           </div>
         );
       })}
-      <div style={{ display: 'flex', gap: 12, marginTop: 6, justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', gap: 14, marginTop: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <div style={{ width: 12, height: 8, borderRadius: 2, background: C.amber, opacity: 0.8 }} />
+          {NODES.map(n => (
+            <div key={n} style={{ width: 10, height: 8, borderRadius: 2, background: NODE_COLORS[n], opacity: 0.8 }} />
+          ))}
           <span style={{ fontSize: 10, color: C.text3 }}>IR Detected</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -296,18 +298,30 @@ export default function Charts() {
 
   const fetch_ = useCallback(async () => {
     try {
-      const results = await Promise.all(NODES.map(n => api.history(n)));
+      const [results, fo] = await Promise.all([
+        Promise.all(NODES.map(n => api.history(n))),
+        api.failover().catch(() => ({ dead_nodes: [] as string[], last_seen: {} as Record<string, string>, events: [] as string[] })),
+      ]);
+      const deadSet = new Set(fo.dead_nodes);
+      const lastSeenUnix: Record<string, number> = {};
+      for (const [nid, iso] of Object.entries(fo.last_seen)) {
+        lastSeenUnix[nid] = new Date(iso).getTime() / 1000;
+      }
       const map: Record<string, any[]> = {};
       NODES.forEach((n, i) => {
-        map[n] = results[i].slice(-60).map((row: NodeState) => ({
-          _t:       new Date(row.wall_time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          delay_ms: row.avg_delay_s != null ? parseFloat((row.avg_delay_s * 1000).toFixed(2)) : null,
-          risk_pct: parseFloat(((row.ml_risk ?? 0) * 100).toFixed(1)),
-          cong_n:   bool(row.congestion) ? 1 : 0,
-          det_n:    bool(row.detected)   ? 1 : 0,
-          net_ms:   row.network_delay_s != null ? parseFloat((row.network_delay_s * 1000).toFixed(2)) : null,
-          battery:  row.battery_pct != null ? parseFloat(row.battery_pct.toFixed(1)) : null,
-        }));
+        const cutoff = deadSet.has(n) && lastSeenUnix[n] != null ? lastSeenUnix[n] : Infinity;
+        map[n] = results[i].slice(-60).map((row: NodeState) => {
+          const alive = row.wall_time <= cutoff;
+          return {
+            _t:       new Date(row.wall_time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            delay_ms: alive && row.avg_delay_s != null ? parseFloat((row.avg_delay_s * 1000).toFixed(2)) : null,
+            risk_pct: alive ? parseFloat(((row.ml_risk ?? 0) * 100).toFixed(1)) : null,
+            cong_n:   alive ? (bool(row.congestion) ? 1 : 0) : 0,
+            det_n:    alive ? (bool(row.detected)   ? 1 : 0) : 0,
+            net_ms:   alive && row.network_delay_s != null ? parseFloat((row.network_delay_s * 1000).toFixed(2)) : null,
+            battery:  alive && row.battery_pct != null ? parseFloat(row.battery_pct.toFixed(1)) : null,
+          };
+        });
       });
       setAllData(map);
       setLast(new Date());
@@ -389,7 +403,7 @@ export default function Charts() {
                 <Line
                   key={n} type="monotone" dataKey={`${n}_delay`}
                   stroke={NODE_COLORS[n]} strokeWidth={1.5}
-                  dot={false} connectNulls isAnimationActive={false}
+                  dot={false} isAnimationActive={false}
                   activeDot={{ r: 3, fill: NODE_COLORS[n], stroke: C.bgCard, strokeWidth: 2 }}
                 />
               ))}
@@ -412,7 +426,7 @@ export default function Charts() {
                 <Line
                   key={n} type="monotone" dataKey={`${n}_risk`}
                   stroke={NODE_COLORS[n]} strokeWidth={1.5}
-                  dot={false} connectNulls isAnimationActive={false}
+                  dot={false} isAnimationActive={false}
                   activeDot={{ r: 3, fill: NODE_COLORS[n], stroke: C.bgCard, strokeWidth: 2 }}
                 />
               ))}
@@ -436,7 +450,7 @@ export default function Charts() {
                 <Line
                   key={n} type="monotone" dataKey={`${n}_bat`}
                   stroke={NODE_COLORS[n]} strokeWidth={1.5}
-                  dot={false} connectNulls isAnimationActive={false}
+                  dot={false} isAnimationActive={false}
                   activeDot={{ r: 3, fill: NODE_COLORS[n], stroke: C.bgCard, strokeWidth: 2 }}
                 />
               ))}
@@ -462,12 +476,12 @@ export default function Charts() {
               <Tooltip {...TOOLTIP_STYLE} formatter={(v, name) => [v === 1 ? 'Yes' : 'No', String(name).replace(/_\w+/, '') + (String(name).includes('cong') ? ' Congested' : ' Detected')]} />
               {NODES.map(n => (
                 <Area key={`${n}_c`} type="stepAfter" dataKey={`${n}_cong`}
-                  stroke={C.teal} strokeWidth={1} fill={C.teal} fillOpacity={0.18}
+                  stroke={C.amber} strokeWidth={1} fill={C.amber} fillOpacity={0.20}
                   dot={false} isAnimationActive={false} />
               ))}
               {NODES.map(n => (
                 <Area key={`${n}_d`} type="stepAfter" dataKey={`${n}_det`}
-                  stroke={C.amber} strokeWidth={1} fill={C.amber} fillOpacity={0.25}
+                  stroke={NODE_COLORS[n]} strokeWidth={1} fill={NODE_COLORS[n]} fillOpacity={0.18}
                   dot={false} isAnimationActive={false} />
               ))}
             </AreaChart>
@@ -504,7 +518,7 @@ export default function Charts() {
                     { label: 'Avg Delay',  val: last.delay_ms != null ? `${last.delay_ms} ms` : '—', col: nodeColor },
                     { label: 'Net Delay',  val: last.net_ms   != null ? `${last.net_ms} ms`   : '—', col: C.text1 },
                     { label: 'ML Risk',    val: `${last.risk_pct}%`, col: last.risk_pct > 70 ? C.red : last.risk_pct > 40 ? C.amber : C.teal },
-                    { label: 'Battery',    val: last.battery  != null ? `${last.battery}%`    : '—', col: last.battery < 40 ? C.amber : C.text2 },
+                    { label: 'Battery',    val: last.battery  != null ? `${last.battery}%`    : '—', col: last.battery < 30 ? C.red : last.battery < 60 ? C.amber : C.text2 },
                     { label: 'Congested',  val: last.cong_n ? 'Yes' : 'No', col: last.cong_n ? C.red : C.teal },
                     { label: 'Detected',   val: last.det_n  ? 'Yes' : 'No', col: last.det_n  ? C.amber : C.text3 },
                     { label: 'Readings',   val: String(selData.length), col: C.text2 },

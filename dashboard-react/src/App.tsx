@@ -6,6 +6,7 @@ import Charts from './components/views/Charts';
 import MLMetricsView from './components/views/MLMetrics';
 import EventLog from './components/views/EventLog';
 import NetworkTwin from './components/views/NetworkTwin';
+import Explainability from './components/views/Explainability';
 import type { View } from './types';
 import { C } from './theme';
 
@@ -35,6 +36,7 @@ export default function App() {
           {view === 'ml-metrics'    && <MLMetricsView />}
           {view === 'event-log'     && <EventLog />}
           {view === 'network-twin'  && <NetworkTwin />}
+          {view === 'explainability' && <Explainability />}
         </div>
       </main>
     </div>

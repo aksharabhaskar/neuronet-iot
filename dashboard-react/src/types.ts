@@ -8,6 +8,7 @@ export interface NodeState {
   ml_risk?: number;
   action: string;
   routing: string;
+  routing_path?: string;
   ir_value: number;
   detected: boolean | string;
   battery_pct: number;
@@ -15,6 +16,7 @@ export interface NodeState {
 
 export interface LogEntry extends NodeState {
   risk_label?: string;
+  ml_rationale?: string;
 }
 
 export interface MLMetrics {
@@ -85,4 +87,26 @@ export interface TwinNode {
   state: 'normal' | 'congested';
 }
 
-export type View = 'overview' | 'charts' | 'ml-metrics' | 'event-log' | 'network-twin';
+export interface Contribution {
+  feature: string;
+  value: number;
+  shap_value: number;
+  direction: 'increases_risk' | 'decreases_risk';
+}
+
+export interface Explanation {
+  risk: number;
+  risk_label: 'LOW' | 'MEDIUM' | 'HIGH';
+  contributions: Contribution[];
+  rationale: string;
+}
+
+export type ExplainResponse = Record<string, Explanation>;
+
+export interface FailoverState {
+  dead_nodes: string[];
+  last_seen: Record<string, string>;
+  events: string[];
+}
+
+export type View = 'overview' | 'charts' | 'ml-metrics' | 'event-log' | 'network-twin' | 'explainability';

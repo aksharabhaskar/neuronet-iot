@@ -16,8 +16,8 @@ import os
 import threading
 from collections import deque
 
-from digital_twin.twin import update_twin
-from control_engine.routing import choose_path
+from digital_twin.twin import build_topology, update_edge_weights
+from control_engine.routing import compute_route
 from edge_controller.config import (
     CONGESTION_THRESHOLD, CONGESTION_CLEAR,
     LATENCY_WINDOW_SIZE, BATTERY_LOW_THRESHOLD,
@@ -54,8 +54,13 @@ _packet_count:     dict[str, int]   = {}
 _total_packets:    int = 0
 _last_display:     float = 0.0
 
+last_seen:        dict[str, float] = {}
+dead_nodes:       set[str]         = set()
+last_explanation: dict[str, dict]  = {}
+_EVENTS_LOG = os.path.join(os.path.dirname(LOG_FILE), "events.log")
+
 DISPLAY_INTERVAL = 3.0
-_lock = threading.Lock()
+_lock = threading.RLock()
 
 # ---------------------------------------------------------------
 # CSV
@@ -65,6 +70,7 @@ _LOG_HEADERS = [
     "network_delay_s", "avg_delay_s",
     "congestion", "ml_risk", "risk_label", "action", "routing",
     "ir_value", "detected", "battery_pct",
+    "routing_path", "dead_nodes", "ml_rationale",
 ]
 
 
@@ -142,7 +148,7 @@ def _print_dashboard():
         print(f"    Avg delay  : {ms:.1f} ms   Congestion: {cong_str}")
         print(f"    ML risk    : {s['ml_risk']*100:.0f}%   {risk_str}")
         print(f"    Action     : {s['action']}")
-        print(f"    Routing    : {s['routing']}")
+        print(f"    Route      : {s.get('routing_path', s.get('routing', ''))}")
 
     print("\n" + "=" * 58)
     print("   Logging → data/logs.csv   |   Ctrl+C to stop")
@@ -160,6 +166,29 @@ def _control_action(congestion, battery, detected):
     if detected:
         return "OBJECT DETECTED - LOG EVENT"
     return "NORMAL"
+
+
+def _write_event(event: str) -> None:
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    os.makedirs(os.path.dirname(_EVENTS_LOG), exist_ok=True)
+    with open(_EVENTS_LOG, "a", encoding="utf-8") as f:
+        f.write(f"{ts} {event}\n")
+
+
+def mark_dead(node_id: str, reason: str) -> None:
+    with _lock:
+        if node_id in dead_nodes:
+            return
+        dead_nodes.add(node_id)
+    _write_event(f"FAILOVER_DEAD {node_id} {reason}")
+
+
+def check_heartbeats() -> None:
+    from edge_controller.config import HEARTBEAT_TIMEOUT
+    now = time.time()
+    for nid, ts in list(last_seen.items()):
+        if now - ts > HEARTBEAT_TIMEOUT:
+            mark_dead(nid, "heartbeat")
 
 
 # ---------------------------------------------------------------
@@ -182,6 +211,11 @@ def _process_packet_locked(data: dict):
     node_id = raw_id.split("_")[-1] if "_" in raw_id else raw_id
 
     device_ts = float(data.get("timestamp", 0.0))
+
+    if node_id in dead_nodes:
+        dead_nodes.discard(node_id)
+        _write_event(f"FAILOVER_RECOVERED {node_id}")
+    last_seen[node_id] = wall_now
 
     # Support both flat format {ir_value, detected, battery}
     # and nested sketch format {sensors: {analog}, health: {battery}}
@@ -210,31 +244,59 @@ def _process_packet_locked(data: dict):
 
     # ML prediction
     ml_risk = 0.0
+    ml_rationale = ""
     if _predictor is not None:
         window = list(_delay_window.get(node_id, []))
         if len(window) >= 2:
             ml_risk = _predictor.predict(window)
+            explanation = _predictor.explain_window(window)
+            last_explanation[node_id] = explanation
+            ml_rationale = explanation.get("rationale", "")
 
     risk_label = (_predictor.risk_label(ml_risk)
                   if _predictor else "N/A")
 
-    path   = choose_path(avg_del)
-    action = _control_action(congestion, battery, detected)
+    node_states = {
+        nid: {
+            "avg_delay": st["avg_delay"],
+            "ml_risk":   st["ml_risk"],
+            "battery":   st["battery"],
+        }
+        for nid, st in _node_state.items()
+    }
+    node_states[node_id] = {
+        "avg_delay": avg_del,
+        "ml_risk":   ml_risk,
+        "battery":   battery,
+    }
+    graph = build_topology()
+    for n in dead_nodes:
+        if n in graph.nodes:
+            graph.remove_node(n)
+    update_edge_weights(graph, node_states)
+    route = compute_route(node_id, graph)
 
-    update_twin(node_id, avg_del)
+    if route == ["UNREACHABLE"]:
+        routing_path = "UNREACHABLE"
+        action = "DROP / DELAY PACKET"
+    else:
+        routing_path = "->".join(route)
+        action = "SHORTEST PATH" if len(route) <= 3 else "LOW-CONGESTION PATH"
 
     _total_packets += 1
     _packet_count[node_id] = _packet_count.get(node_id, 0) + 1
 
     _node_state[node_id] = {
-        "ir_value":   ir_value,
-        "detected":   detected,
-        "avg_delay":  avg_del,
-        "congestion": congestion,
-        "ml_risk":    ml_risk,
-        "risk_label": risk_label,
-        "action":     action,
-        "routing":    path,
+        "ir_value":     ir_value,
+        "detected":     detected,
+        "avg_delay":    avg_del,
+        "congestion":   congestion,
+        "ml_risk":      ml_risk,
+        "risk_label":   risk_label,
+        "action":       action,
+        "routing":      routing_path,
+        "routing_path": routing_path,
+        "battery":      battery,
     }
 
     if wall_now - _last_display >= DISPLAY_INTERVAL:
@@ -251,8 +313,12 @@ def _process_packet_locked(data: dict):
         "ml_risk":         round(ml_risk, 4),
         "risk_label":      risk_label,
         "action":          action,
-        "routing":         path,
+        "routing":         routing_path,
         "ir_value":        ir_value,
         "detected":        detected,
         "battery_pct":     battery,
+        "routing_path":    routing_path,
+        "dead_nodes":      ",".join(sorted(dead_nodes)),
+        "ml_rationale":    ml_rationale,
     })
+    check_heartbeats()

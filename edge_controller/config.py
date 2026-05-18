@@ -37,3 +37,10 @@ BATTERY_LOW_THRESHOLD = 40        # %
 LOG_FILE      = str(_PROJECT_ROOT / "data" / "logs.csv")
 MODEL_PATH    = str(_PROJECT_ROOT / "data" / "model.pkl")
 MODEL_METRICS = str(_PROJECT_ROOT / "data" / "model_metrics.json")
+
+# --- Smart Graph Routing weights ---
+ROUTING_WEIGHTS = {"alpha": 1.0, "beta": 2.0, "gamma": 0.1}
+
+# --- Self-Healing Failover ---
+HEARTBEAT_TIMEOUT = 5.0
+MQTT_LWT_TOPIC    = "neuronet/status/+"

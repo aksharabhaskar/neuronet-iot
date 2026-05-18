@@ -1,4 +1,4 @@
-import { LayoutDashboard, BarChart2, Activity, FileText, Network } from 'lucide-react';
+import { LayoutDashboard, BarChart2, Activity, FileText, Network, Lightbulb } from 'lucide-react';
 import { NODES } from '../../api';
 import { C } from '../../theme';
 import type { View } from '../../types';
@@ -10,7 +10,8 @@ const NAV: { id: View; label: string; Icon: React.FC<{ size?: number; color?: st
   { id: 'charts',        label: 'CHARTS',        Icon: BarChart2 },
   { id: 'ml-metrics',   label: 'ML METRICS',    Icon: Activity },
   { id: 'event-log',    label: 'EVENT LOG',     Icon: FileText },
-  { id: 'network-twin', label: 'NETWORK TWIN',  Icon: Network },
+  { id: 'network-twin',   label: 'NETWORK TWIN', Icon: Network },
+  { id: 'explainability', label: 'WHY?',         Icon: Lightbulb },
 ];
 
 function GeoIcon() {

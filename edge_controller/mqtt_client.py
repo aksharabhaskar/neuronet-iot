@@ -1,8 +1,8 @@
 import paho.mqtt.client as mqtt
 import json
 
-from edge_controller.monitor import process_packet
-from edge_controller.config import BROKER_HOST, BROKER_PORT, MQTT_TOPIC_DATA
+from edge_controller.monitor import process_packet, mark_dead
+from edge_controller.config import BROKER_HOST, BROKER_PORT, MQTT_TOPIC_DATA, MQTT_LWT_TOPIC
 
 
 # ------------------------------------------------------------------
@@ -10,7 +10,8 @@ def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print(f"[MQTT] Connected to broker at {BROKER_HOST}:{BROKER_PORT}")
         client.subscribe(MQTT_TOPIC_DATA)
-        print(f"[MQTT] Subscribed to topic: {MQTT_TOPIC_DATA}")
+        client.subscribe(MQTT_LWT_TOPIC)
+        print(f"[MQTT] Subscribed to: {MQTT_TOPIC_DATA}, {MQTT_LWT_TOPIC}")
     else:
         codes = {
             1: "incorrect protocol version",
@@ -22,7 +23,18 @@ def on_connect(client, userdata, flags, rc):
         print(f"[MQTT] Connection refused — {codes.get(rc, f'rc={rc}')}")
 
 
+def _handle_lwt(topic: str, payload: str) -> None:
+    raw = topic.split("/")[-1]
+    node_id = raw.split("_")[-1] if "_" in raw else raw  # normalize ESP32_N1 → N1
+    if payload == "offline":
+        mark_dead(node_id, "lwt")
+        print(f"[MQTT] LWT offline for {node_id} — marked dead")
+
+
 def on_message(client, userdata, msg):
+    if msg.topic.startswith("neuronet/status/"):
+        _handle_lwt(msg.topic, msg.payload.decode().strip())
+        return
     try:
         data = json.loads(msg.payload.decode())
         node = data.get("node_id", "unknown")

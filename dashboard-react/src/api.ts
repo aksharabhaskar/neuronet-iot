@@ -1,4 +1,4 @@
-import type { NodeState, MLMetrics, LogsResponse, StatsResponse, ConfigResponse, TwinNode } from './types';
+import type { NodeState, MLMetrics, LogsResponse, StatsResponse, ConfigResponse, TwinNode, FailoverState, Explanation, ExplainResponse } from './types';
 
 const BASE = '/api';
 
@@ -49,6 +49,18 @@ export const api = {
   /** Digital twin graph nodes */
   twin: (): Promise<TwinNode[]> =>
     get('/twin'),
+
+  /** Failover state — dead nodes, last_seen timestamps, recent events */
+  failover: (): Promise<FailoverState> =>
+    get('/failover'),
+
+  /** SHAP explanations for all nodes */
+  explain: (): Promise<ExplainResponse> =>
+    get('/explain'),
+
+  /** SHAP explanation for one node */
+  explainNode: (nodeId: string): Promise<Explanation> =>
+    get(`/explain/${nodeId}`),
 
   /** Trigger CSV download directly */
   csvUrl: (): string => `${BASE}/logs/export`,

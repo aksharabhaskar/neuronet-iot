@@ -1,10 +1,8 @@
-from edge_controller.config import CONGESTION_THRESHOLD
+import networkx as nx
 
-def choose_path(avg_delay: float) -> str:
-    """
-    Choose routing based on measured network delay (seconds).
-    Threshold is read from config so it stays in sync with congestion detection.
-    """
-    if avg_delay > CONGESTION_THRESHOLD:
-        return "LOW-CONGESTION PATH"
-    return "SHORTEST PATH"
+
+def compute_route(source: str, graph: nx.Graph) -> list[str]:
+    try:
+        return nx.shortest_path(graph, source, "CLOUD", weight="weight")
+    except (nx.NetworkXNoPath, nx.NodeNotFound):
+        return ["UNREACHABLE"]

@@ -7,6 +7,7 @@ import { Skeleton } from '../ui/Skeleton';
 
 const NODES    = ['All', ...NODE_IDS];
 const PER_PAGE = 50;
+const NODE_COLORS: Record<string, string> = { N1: C.amber, N2: C.teal, N3: C.muted };
 
 function bool(v: boolean | string | undefined) {
   return typeof v === 'boolean' ? v : String(v).toLowerCase() === 'true';
@@ -412,7 +413,7 @@ export default function EventLog() {
                       }}>
                         <Td muted mono>{ts}</Td>
                         <Td>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: C.amber }}>{row.node_id}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: NODE_COLORS[row.node_id] ?? C.amber }}>{row.node_id}</span>
                         </Td>
                         <Td align="right" mono>{row.ir_value}</Td>
                         <Td align="center">
@@ -497,7 +498,7 @@ export default function EventLog() {
                 { label: 'Congested rows', val: `${congestPct}%`,   col: parseFloat(congestPct)  > 20 ? C.red   : C.teal },
                 { label: 'Detection rows', val: `${detectPct}%`,    col: parseFloat(detectPct)   > 0  ? C.amber : C.text3 },
                 { label: 'HIGH RISK rows', val: `${highRiskPct}%`,  col: parseFloat(highRiskPct) > 5  ? C.red   : C.teal },
-                { label: 'Avg delay',      val: avgDelay !== '—' ? `${avgDelay} ms` : '—', col: C.amber },
+                { label: 'Avg delay',      val: avgDelay !== '—' ? `${avgDelay} ms` : '—', col: avgDelay === '—' ? C.text3 : parseFloat(avgDelay) < 30 ? C.teal : parseFloat(avgDelay) < 80 ? C.amber : C.red },
                 { label: 'Rows shown',     val: String(entries.length), col: C.text2 },
               ].map(({ label, val, col }) => (
                 <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${C.borderSub}` }}>

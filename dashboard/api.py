@@ -274,6 +274,55 @@ def twin():
     return jsonify(result)
 
 
+# ── NEW: /api/failover ───────────────────────────────────────────────
+
+@app.route('/api/failover')
+def failover():
+    try:
+        from edge_controller.monitor import dead_nodes, last_seen
+        dead = sorted(dead_nodes)
+        ls   = {
+            nid: time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(ts))
+            for nid, ts in last_seen.items()
+        }
+    except Exception:
+        dead = []
+        ls   = {}
+
+    events = []
+    events_log = BASE_DIR / 'data' / 'events.log'
+    if events_log.exists():
+        try:
+            lines  = events_log.read_text(encoding='utf-8').strip().splitlines()
+            events = lines[-20:]
+        except Exception:
+            pass
+
+    return jsonify({'dead_nodes': dead, 'last_seen': ls, 'events': events})
+
+
+# ── NEW: /api/explain ─────────────────────────────────────────────────
+
+@app.route('/api/explain')
+def explain_all():
+    try:
+        from edge_controller.monitor import last_explanation
+        return jsonify({k: dict(v) for k, v in last_explanation.items()})
+    except Exception:
+        return jsonify({})
+
+
+@app.route('/api/explain/<node_id>')
+def explain_node(node_id: str):
+    try:
+        from edge_controller.monitor import last_explanation
+        if node_id not in last_explanation:
+            return jsonify({'error': f'No explanation for {node_id}'}), 404
+        return jsonify(dict(last_explanation[node_id]))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 # ── NEW: /api/logs/export ────────────────────────────────────────────
 
 @app.route('/api/logs/export')

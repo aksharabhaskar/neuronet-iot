@@ -10,3 +10,4 @@ Werkzeug==2.3.0
 pyserial==3.5
 networkx>=3.0
 matplotlib>=3.7
+shap>=0.44

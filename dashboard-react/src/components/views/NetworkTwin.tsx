@@ -302,7 +302,7 @@ function RoutingPanel({ nodes }: { nodes: NodeState[] }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {nodes.map(n => {
-            const isLowCong = n.routing?.includes('LOW');
+            const isLowCong = bool(n.congestion);
             const congested = bool(n.congestion);
             const risk      = (n.ml_risk ?? 0) * 100;
             return (

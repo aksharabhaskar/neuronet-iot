@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { api, NODES } from '../../api';
-import type { NodeState, LogEntry, NodeStats } from '../../types';
+import type { NodeState, LogEntry, NodeStats, FailoverState } from '../../types';
 import { C } from '../../theme';
 import { Alert } from '../ui/Alert';
 import { Skeleton } from '../ui/Skeleton';
@@ -57,12 +57,12 @@ function PulseDot({ active }: { active: boolean }) {
     <div style={{ position: 'relative', width: 8, height: 8, flexShrink: 0 }}>
       {active && (
         <div className="pulse-ring" style={{
-          position: 'absolute', inset: 0, borderRadius: '50%', background: C.green,
+          position: 'absolute', inset: 0, borderRadius: '50%', background: C.teal,
         }} />
       )}
       <div style={{
         position: 'relative', width: 8, height: 8, borderRadius: '50%',
-        background: active ? C.green : C.text3, zIndex: 1,
+        background: active ? C.teal : C.text3, zIndex: 1,
       }} />
     </div>
   );
@@ -181,10 +181,41 @@ function UptimeBadge({ stats }: { stats: NodeStats | undefined }) {
   );
 }
 
+/* ─── Failover banner ────────────────────────────────────────────── */
+function FailoverBanner({ state }: { state: FailoverState }) {
+  if (state.dead_nodes.length === 0) return null;
+
+  function reason(nodeId: string): string {
+    const ev = [...state.events].reverse().find(e => e.includes(`FAILOVER_DEAD ${nodeId}`));
+    if (!ev) return 'offline';
+    return ev.includes('heartbeat') ? 'heartbeat timeout' : 'LWT signal';
+  }
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 6,
+      padding: '10px 14px',
+      background: 'rgba(239,68,68,0.08)',
+      border: '1px solid rgba(239,68,68,0.3)',
+      borderRadius: C.CARD_RADIUS, flexShrink: 0,
+    }}>
+      {state.dead_nodes.map(nid => (
+        <div key={nid} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: C.red, boxShadow: `0 0 6px ${C.red}`, flexShrink: 0 }} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: C.red }}>
+            ⚠ Node {nid} offline ({reason(nid)}) — traffic rerouted
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ─── Node card ──────────────────────────────────────────────────── */
-function NodeCard({ nodeId, state, spark, stats }: {
+function NodeCard({ nodeId, state, spark, stats, isOffline = false }: {
   nodeId: string; state: NodeState | undefined;
   spark: { v: number | null }[]; stats: NodeStats | undefined;
+  isOffline?: boolean;
 }) {
   const color = NODE_COLORS[nodeId] ?? C.amber;
   if (!state) {
@@ -212,16 +243,22 @@ function NodeCard({ nodeId, state, spark, stats }: {
   return (
     <div style={{
       background: C.bgCard,
-      border: `1px solid ${congested ? 'rgba(239,68,68,0.2)' : C.border}`,
+      border: `1px solid ${congested && !isOffline ? 'rgba(239,68,68,0.2)' : C.border}`,
       borderRadius: C.CARD_RADIUS, padding: C.CARD_PAD,
+      opacity: isOffline ? 0.4 : 1,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         <PulseDot active />
         <span style={{ fontSize: 13, fontWeight: 600, color: C.text1 }}>Node {nodeId}</span>
         <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
-          {congested && <span style={{ fontSize: 10, fontWeight: 600, color: C.red, background: C.redDim, padding: '2px 7px', borderRadius: 4, letterSpacing: '0.04em' }}>CONGESTED</span>}
-          {detected  && <span style={{ fontSize: 10, fontWeight: 600, color, background: `${color}18`, padding: '2px 7px', borderRadius: 4, letterSpacing: '0.04em' }}>IR ACTIVE</span>}
-          {!congested && !detected && <span style={{ fontSize: 10, fontWeight: 600, color: C.teal, background: C.tealDim, padding: '2px 7px', borderRadius: 4, letterSpacing: '0.04em' }}>NORMAL</span>}
+          {isOffline
+            ? <span style={{ fontSize: 10, fontWeight: 600, color: C.red, background: C.redDim, padding: '2px 7px', borderRadius: 4, letterSpacing: '0.04em' }}>OFFLINE</span>
+            : <>
+                {congested && <span style={{ fontSize: 10, fontWeight: 600, color: C.red, background: C.redDim, padding: '2px 7px', borderRadius: 4, letterSpacing: '0.04em' }}>CONGESTED</span>}
+                {detected  && <span style={{ fontSize: 10, fontWeight: 600, color, background: `${color}18`, padding: '2px 7px', borderRadius: 4, letterSpacing: '0.04em' }}>IR ACTIVE</span>}
+                {!congested && !detected && <span style={{ fontSize: 10, fontWeight: 600, color: C.teal, background: C.tealDim, padding: '2px 7px', borderRadius: 4, letterSpacing: '0.04em' }}>NORMAL</span>}
+              </>
+          }
         </div>
       </div>
       <div style={{ marginBottom: 10, marginLeft: -4, marginRight: -4 }}>
@@ -233,14 +270,34 @@ function NodeCard({ nodeId, state, spark, stats }: {
           { label: 'IR Reading', value: String(state.ir_value),      color: C.text1 },
           { label: 'ML Risk',    value: `${mlRisk.toFixed(0)}%`,     color: mlRisk > 70 ? C.red : mlRisk > 40 ? C.amber : C.teal },
           { label: 'Battery',    value: `${battery.toFixed(0)}%`,    color: battery < 30 ? C.red : battery < 60 ? C.amber : C.text2 },
-          { label: 'Routing',    value: state.routing,               color: C.text3 },
         ].map(({ label, value, color: vc }) => (
           <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 11, color: C.text3 }}>{label}</span>
-            <span style={{ fontSize: 11, color: vc, fontWeight: vc === C.text3 ? 400 : 500 }}>{value}</span>
+            <span style={{ fontSize: 11, color: vc, fontWeight: 500 }}>{value}</span>
           </div>
         ))}
       </div>
+      {/* Routing path chip */}
+      {(state.routing_path ?? state.routing) && (() => {
+        const rp = state.routing_path ?? state.routing ?? '';
+        const unreachable = rp === 'UNREACHABLE';
+        const chipColor = unreachable ? C.red : C.teal;
+        const chipBg    = unreachable ? C.redDim : C.tealDim;
+        return (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 10, color: C.text3, marginBottom: 4, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Route</div>
+            <div style={{
+              fontSize: 11, color: chipColor, background: chipBg,
+              border: `1px solid ${chipColor}33`,
+              borderRadius: 6, padding: '4px 8px',
+              fontFamily: 'monospace',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {unreachable ? '⚠ UNREACHABLE' : rp.split('->').join(' → ')}
+            </div>
+          </div>
+        );
+      })()}
       {/* Uptime badge */}
       <div style={{ marginTop: 12 }}>
         <UptimeBadge stats={stats} />
@@ -322,12 +379,12 @@ function CongestionHeatmap({ data }: { data: HeatCell[] }) {
 function EventRow({ entry }: { entry: LogEntry }) {
   const detected  = bool(entry.detected);
   const congested = bool(entry.congestion);
-  const dot  = congested ? C.red : detected ? C.amber : C.green;
+  const dot  = congested ? C.red : detected ? C.amber : C.teal;
   const ts   = new Date(entry.wall_time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: `1px solid ${C.borderSub}` }}>
       <div style={{ width: 6, height: 6, borderRadius: '50%', background: dot, flexShrink: 0 }} />
-      <span style={{ fontSize: 12, fontWeight: 600, color: C.amber, width: 24, flexShrink: 0 }}>{entry.node_id}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: NODE_COLORS[entry.node_id] ?? C.amber, width: 24, flexShrink: 0 }}>{entry.node_id}</span>
       <span className="mono" style={{ fontSize: 11, color: C.text2, width: 32, flexShrink: 0 }}>{entry.ir_value}</span>
       <span className="mono" style={{ fontSize: 10, color: C.text3, marginLeft: 'auto' }}>{ts}</span>
     </div>
@@ -347,6 +404,7 @@ export default function Overview() {
   const [toasts,       setToasts]       = useState<{ id: number; node: string; risk: number }[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState<string | null>(null);
+  const [failoverState, setFailoverState] = useState<FailoverState>({ dead_nodes: [], last_seen: {}, events: [] });
   const prevRef    = useRef<Record<string, number | null>>({});
   const toastIdRef = useRef(0);
   const alreadyAlerted = useRef<Set<string>>(new Set());
@@ -440,6 +498,15 @@ export default function Overview() {
     return () => clearInterval(id);
   }, [fetch_]);
 
+  useEffect(() => {
+    const pollFailover = async () => {
+      try { setFailoverState(await api.failover()); } catch { /* degrade gracefully */ }
+    };
+    pollFailover();
+    const id = setInterval(pollFailover, 2000);
+    return () => clearInterval(id);
+  }, []);
+
   const nodeMap      = new Map(nodes.map(n => [n.node_id, n]));
   const activeCount  = nodes.length;
   const congestCount = nodes.filter(n => bool(n.congestion)).length;
@@ -467,6 +534,7 @@ export default function Overview() {
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
         {error && <Alert message="Unable to reach API" detail={error} onRetry={fetch_} />}
+        <FailoverBanner state={failoverState} />
 
         {/* ── Row 1: metric cards ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, flexShrink: 0 }}>
@@ -490,7 +558,7 @@ export default function Overview() {
             {/* Node cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
               {NODES.map(id => (
-                <NodeCard key={id} nodeId={id} state={nodeMap.get(id)} spark={history[id] ?? []} stats={nodeStats[id]} />
+                <NodeCard key={id} nodeId={id} state={nodeMap.get(id)} spark={history[id] ?? []} stats={nodeStats[id]} isOffline={failoverState.dead_nodes.includes(id)} />
               ))}
             </div>
 
@@ -575,7 +643,7 @@ export default function Overview() {
                 { label: 'Active Nodes', val: `${activeCount} / ${NODES.length}`, col: activeCount === NODES.length ? C.teal : C.amber },
                 { label: 'Avg ML Risk',  val: `${avgMlRisk.toFixed(1)}%`,         col: avgMlRisk > 70 ? C.red : avgMlRisk > 40 ? C.amber : C.teal },
                 { label: 'Avg Battery',  val: nodes.length ? `${avgBattery.toFixed(0)}%` : '—', col: C.text1 },
-                { label: 'Avg Delay',    val: avgDelayMs > 0 ? `${avgDelayMs.toFixed(1)} ms` : '—', col: C.amber },
+                { label: 'Avg Delay',    val: avgDelayMs > 0 ? `${avgDelayMs.toFixed(1)} ms` : '—', col: avgDelayMs < 30 ? C.teal : avgDelayMs < 80 ? C.amber : C.red },
                 { label: 'Congested',    val: String(congestCount), col: congestCount > 0 ? C.red : C.teal },
                 { label: 'Detections',   val: String(detectCount),  col: detectCount > 0 ? C.amber : C.text3 },
               ].map(({ label, val, col }, i) => (
